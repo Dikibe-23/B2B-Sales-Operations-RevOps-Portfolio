@@ -9,7 +9,7 @@
 > **Project type:** Portfolio case study. The scenario is framed as a strategic analytics initiative for a B2B telecommunications company.
 > **Data note:** The dataset is a single flat file with 3,200 lead records. <!-- TODO: state whether the data is synthetic/anonymized --> 
 
-![Dashboard overview](docs/images/dashboard_overview.png)
+![Dashboard overview](docs/images/dashboard_overview.PNG)
 
 ---
 
