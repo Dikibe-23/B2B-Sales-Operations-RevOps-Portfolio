@@ -1,0 +1,75 @@
+// Key DAX measures (subset of the 38). All are stored in the hidden _Measures table.
+
+// ---- A. Funnel counts ----
+Leads = COUNTROWS ( FactLead )
+Qualified Leads =
+CALCULATE ( COUNTROWS ( FactLead ), FactLead[LeadStatus] IN { "Qualifiziert", "In Verhandlung", "Gewonnen" } )
+Leads with Offer = COUNTROWS ( FactAngebote )
+Leads In Negotiation =
+CALCULATE ( COUNTROWS ( FactLead ), FactLead[LeadStatus] IN { "In Verhandlung", "Gewonnen" } )
+Contracts Signed = COUNTROWS ( FactVertraege )
+
+// ---- B. Offer metrics ----
+Offers Won = CALCULATE ( COUNTROWS ( FactAngebote ), FactAngebote[AngebotStatus] = "Gewonnen" )
+Offers Rejected = CALCULATE ( COUNTROWS ( FactAngebote ), FactAngebote[AngebotStatus] = "Abgelehnt" )
+Offers Open = CALCULATE ( COUNTROWS ( FactAngebote ), FactAngebote[AngebotStatus] = "Offen" )
+Offer Win Rate = DIVIDE ( [Offers Won], [Offers Won] + [Offers Rejected] )
+Open Pipeline EUR =
+CALCULATE ( SUM ( FactAngebote[AngebotWertEUR] ), FactAngebote[AngebotStatus] = "Offen" )
+
+// ---- C. Contract and revenue ----
+Contract Volume TCV = SUM ( FactVertraege[VertragWertEUR] )
+Avg Contract Value = DIVIDE ( [Contract Volume TCV], [Contracts Signed] )
+Annualized ARR =
+SUMX ( FactVertraege, DIVIDE ( FactVertraege[VertragWertEUR], FactVertraege[LaufzeitMonate] ) * 12 )
+Lead-to-Contract Rate = DIVIDE ( [Contracts Signed], [Leads] )
+
+// ---- D. Process duration ----
+Avg Signature Duration Days = AVERAGE ( FactVertraege[UnterschriftsDauerTage] )
+Median Signature Duration = MEDIAN ( FactVertraege[UnterschriftsDauerTage] )
+Avg Total Duration Days = AVERAGE ( FactVertraege[GesamtDauerTage] )
+Median Total Duration Days = MEDIAN ( FactVertraege[GesamtDauerTage] )
+Avg Duration Lead to Offer = AVERAGE ( FactVertraege[DauerLeadBisAngebotTage] )
+Avg Duration Offer to Internal = AVERAGE ( FactVertraege[DauerAngebotBisInternTage] )
+
+// ---- E. USERELATIONSHIP ----
+Offers by Offer Date =
+CALCULATE ( COUNTROWS ( FactAngebote ), USERELATIONSHIP ( DimKalendar[Datum], FactAngebote[AngebotGueltigAb] ) )
+Contracts by Ext Signature =
+CALCULATE ( COUNTROWS ( FactVertraege ), USERELATIONSHIP ( DimKalendar[Datum], FactVertraege[ExternUnterschrift] ) )
+Contract Volume by Ext Signature =
+CALCULATE ( SUM ( FactVertraege[VertragWertEUR] ), USERELATIONSHIP ( DimKalendar[Datum], FactVertraege[ExternUnterschrift] ) )
+Avg Duration by Ext Signature =
+CALCULATE ( AVERAGE ( FactVertraege[UnterschriftsDauerTage] ), USERELATIONSHIP ( DimKalendar[Datum], FactVertraege[ExternUnterschrift] ) )
+
+// ---- F. Period over period ----
+Leads PQ = CALCULATE ( [Leads], DATEADD ( DimKalendar[Datum], -1, QUARTER ) )
+Leads Delta% = VAR _c = [Leads] VAR _p = [Leads PQ] RETURN DIVIDE ( _c - _p, _p )
+Contracts PQ = CALCULATE ( [Contracts by Ext Signature], DATEADD ( DimKalendar[Datum], -1, QUARTER ) )
+Contracts Delta% = VAR _c = [Contracts by Ext Signature] VAR _p = [Contracts PQ] RETURN DIVIDE ( _c - _p, _p )
+Duration PQ = CALCULATE ( [Avg Signature Duration Days], DATEADD ( DimKalendar[Datum], -1, QUARTER ) )
+Duration Delta% = VAR _c = [Avg Signature Duration Days] VAR _p = [Duration PQ] RETURN DIVIDE ( _c - _p, _p )
+
+// ---- G. Funnel drop-off ----
+Dropoff Not Qualified = [Leads] - [Qualified Leads]
+Dropoff No Offer = [Qualified Leads] - [Leads with Offer]
+Dropoff Decision Against Us = [Offers Rejected]
+Dropoff Abandoned = [Leads with Offer] - [Leads In Negotiation] - [Offers Rejected]
+
+// ---- H. Conversion rates ----
+Conversion Lead Qualified = DIVIDE ( [Qualified Leads], [Leads] )
+Conversion Qualified to Offer = DIVIDE ( [Leads with Offer], [Qualified Leads] )
+Conversion Offer Won = [Offer Win Rate]
+Conversion Lead Contract = [Lead-to-Contract Rate]
+
+// ---- Waterfall switch measure (uses disconnected table FunnelStages) ----
+Funnel Waterfall =
+SWITCH (
+    SELECTEDVALUE ( FunnelStages[Stage] ),
+    "Leads", [Leads],
+    "Not Qualified", -[Dropoff Not Qualified],
+    "No Offer", -[Dropoff No Offer],
+    "Abandoned", -[Dropoff Abandoned],
+    "Rejected", -[Dropoff Decision Against Us],
+    "Signed", [Contracts Signed]
+)
